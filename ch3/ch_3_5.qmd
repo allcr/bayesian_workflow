@@ -15,6 +15,7 @@ library(cmdstanr)
 library(ggplot2)
 library(tidyverse)
 library(posterior)
+library(brms)
 ```
 
 ```{r}
@@ -51,3 +52,115 @@ draws1 |>
   labs(x = "Dose log(g/ml)", y = "Pr(Death)")
 ```
 
+```{r}
+draws1 |>
+  mutate_variables(LD50 = -a/b) |> 
+  subset_draws(variable='LD50') |> 
+  summarize_draws()
+```
+
+
+
+```{r}
+#| echo: false
+bfit1 <- brm(
+  deaths | trials(batch_size) ~ dose, family=binomial(link = 'logit'),
+  prior = c(
+    prior(normal(0,5), class = Intercept),
+    prior(normal(0,5), lb=0, class=b)),
+  data=df)
+
+```
+
+```{r}
+bfit1
+```
+
+
+---
+title: "Section 3.5 A Simple Example of Probabilistic Programming"
+format: gfm
+execute:
+  message: false
+  warning: false
+---
+
+
+
+```{r}
+#| echo: false
+
+library(cmdstanr)
+library(ggplot2)
+library(tidyverse)
+library(posterior)
+library(brms)
+```
+
+```{r}
+# hard coded bioassay data from Racine-Poon et al. (1986)
+df <- data.frame(
+  dose = c(-0.86, -0.30, -0.05, 0.73),
+  batch_size = c(5, 5, 5, 5),
+  deaths = c(0, 1, 3, 5)
+)
+
+bioassay_data <- with(df, list(J = nrow(df), x = dose, n = batch_size, y = deaths))
+
+bioassay1 <- cmdstan_model("bioassay1.stan", pedantic = TRUE)
+
+fit1 <- bioassay1$sample(data = bioassay_data, refresh = 0)
+print(fit1)
+
+```
+
+
+```{r}
+
+
+draws1 <- fit1$draws(format = "df")
+
+draws1 |>
+  resample_draws(ndraws = 20) |>
+  expand_grid(x = seq(-1, 1, length = 100)) |>
+  mutate(y = plogis(a + b * x)) |>
+  ggplot() +
+  geom_point(data = df, aes(x = dose, y = deaths / batch_size), size = 3) +
+  geom_line(aes(x = x, y = y, group = .draw), alpha = .5, color = "red") +
+  geom_function(fun = \(x) plogis(mean(draws1$a) + mean(draws1$b) * x), color = "blue", linewidth = 1) +
+  labs(x = "Dose log(g/ml)", y = "Pr(Death)")
+```
+
+```{r}
+draws1 |>
+  mutate_variables(LD50 = -a/b) |> 
+  subset_draws(variable='LD50') |> 
+  summarize_draws()
+```
+
+
+
+```{r}
+#| echo: false
+bfit1 <- brm(
+  deaths | trials(batch_size) ~ dose, family=binomial(link = 'logit'),
+  prior = c(
+    prior(normal(0,5), class = Intercept),
+    prior(normal(0,5), lb=0, class=b)),
+  data=df)
+
+```
+
+```{r}
+bfit1
+```
+
+```{r}
+plot(conditional_effects(bfit1))
+```
+
+
+```{r}
+plot(conditional_effects(bfit1, spaghetti = TRUE,ndraws=20))
+
+```
